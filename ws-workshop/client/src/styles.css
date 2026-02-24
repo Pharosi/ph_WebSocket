@@ -6,6 +6,7 @@
   --accent-dark: #9f341d;
   --line: #dfd8cc;
   --bubble: #f1e6d4;
+  --room-bg: #f5ede1;
 }
 
 * {
@@ -33,11 +34,11 @@ body {
 }
 
 .panel {
-  width: min(860px, 100%);
-  height: min(82dvh, 730px);
+  width: min(1080px, 100%);
+  height: min(90dvh, 820px);
   max-height: calc(100dvh - 36px);
   display: grid;
-  grid-template-rows: auto auto auto 1fr auto auto;
+  grid-template-rows: auto 1fr;
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -73,6 +74,13 @@ h1 {
   font-size: clamp(1.4rem, 3vw, 2rem);
 }
 
+.active-room {
+  margin: 6px 0 0;
+  color: #77543a;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .status {
   padding: 6px 10px;
   border-radius: 999px;
@@ -101,6 +109,69 @@ h1 {
 
 .disconnect-btn:not(:disabled):hover {
   background: #3f3b34;
+}
+
+.workspace {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 14px;
+}
+
+.rooms-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  background: var(--room-bg);
+}
+
+.rooms-panel h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.room-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.room-form button {
+  height: 36px;
+  padding: 0 10px;
+  font-size: 0.86rem;
+}
+
+.room-list {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.room-item {
+  text-align: left;
+  background: #e8dece;
+  color: #3e2a1c;
+  border: 1px solid #d6c7b3;
+}
+
+.room-item.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+.chat-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+  gap: 12px;
 }
 
 .nickname-form,
@@ -217,6 +288,10 @@ button:not(:disabled):hover {
   align-content: start;
 }
 
+.messages article.message {
+  display: grid !important;
+}
+
 .message {
   width: fit-content;
   max-width: min(100%, 560px);
@@ -232,6 +307,11 @@ button:not(:disabled):hover {
   min-height: 46px;
   font-size: 1rem;
   line-height: 1.45;
+}
+
+.message.chat {
+  justify-self: start;
+  width: auto;
 }
 
 .message.system {
@@ -256,6 +336,7 @@ button:not(:disabled):hover {
   font-size: 1rem;
 }
 
+.chat-time,
 .message time {
   justify-self: end;
   font-size: 0.8rem;
@@ -268,10 +349,36 @@ button:not(:disabled):hover {
   color: #7e5f43;
 }
 
+@media (max-width: 900px) {
+  .panel {
+    height: min(94dvh, 1000px);
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .rooms-panel {
+    grid-template-rows: auto auto;
+  }
+
+  .room-list {
+    max-height: 180px;
+  }
+}
+
 @media (max-width: 760px) {
   .panel {
-    height: min(92dvh, 860px);
     padding: 14px;
+  }
+
+  .panel-header {
+    flex-direction: column;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .nickname-form,
