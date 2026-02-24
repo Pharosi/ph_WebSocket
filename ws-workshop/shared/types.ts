@@ -1,8 +1,6 @@
 export type ClientMessage =
-  | { type: "set-nick"; nick: string }
   | { type: "chat"; text: string }
   | { type: "typing" }
-  | { type: "leave" }
   | { type: "join-room"; room: string }
   | { type: "leave-room"; room: string };
 

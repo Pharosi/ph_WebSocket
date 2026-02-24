@@ -175,6 +175,7 @@ h1 {
 }
 
 .nickname-form,
+.auth-form,
 .composer {
   display: grid;
   gap: 10px;
@@ -183,6 +184,10 @@ h1 {
 
 .nickname-form {
   grid-template-columns: 140px 1fr auto;
+}
+
+.auth-form {
+  grid-template-columns: 1fr 1fr auto;
 }
 
 .composer {
@@ -349,6 +354,13 @@ button:not(:disabled):hover {
   color: #7e5f43;
 }
 
+.auth-error {
+  margin: -6px 0 0;
+  font-size: 0.86rem;
+  color: #9b2d12;
+  font-weight: 700;
+}
+
 @media (max-width: 900px) {
   .panel {
     height: min(94dvh, 1000px);
@@ -382,6 +394,7 @@ button:not(:disabled):hover {
   }
 
   .nickname-form,
+  .auth-form,
   .composer {
     grid-template-columns: 1fr;
   }

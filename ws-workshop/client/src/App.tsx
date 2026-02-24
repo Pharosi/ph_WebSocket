@@ -1,8 +1,11 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientMessage, ServerMessage } from "../../shared/types";
 
+const API_URL = "http://localhost:8080";
 const WS_URL = "ws://localhost:8080";
 const DEFAULT_ROOM = "#general";
+const TOKEN_STORAGE_KEY = "ws_token";
+const USER_STORAGE_KEY = "ws_username";
 
 type ConnectionState = "Connexion..." | "Connecte" | "Deconnecte" | "Erreur de reseau";
 
@@ -34,43 +37,49 @@ function isServerMessage(payload: unknown): payload is ServerMessage {
 }
 
 export default function App() {
-  const [nickname, setNickname] = useState<string>("");
-  const [nicknameDraft, setNicknameDraft] = useState<string>("");
+  const [username, setUsername] = useState<string>(() => localStorage.getItem(USER_STORAGE_KEY) ?? "");
+  const [password, setPassword] = useState<string>("");
+  const [token, setToken] = useState<string>(() => localStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+  const [authError, setAuthError] = useState<string>("");
   const [input, setInput] = useState<string>("");
   const [messages, setMessages] = useState<ServerMessage[]>([]);
   const [users, setUsers] = useState<string[]>([]);
   const [typingNick, setTypingNick] = useState<string>("");
-  const [status, setStatus] = useState<ConnectionState>("Connexion...");
+  const [status, setStatus] = useState<ConnectionState>("Deconnecte");
   const [rooms, setRooms] = useState<string[]>([DEFAULT_ROOM]);
   const [activeRoom, setActiveRoom] = useState<string>(DEFAULT_ROOM);
   const [roomDraft, setRoomDraft] = useState<string>("");
 
   const wsRef = useRef<WebSocket | null>(null);
-  const nicknameRef = useRef<string>("");
   const activeRoomRef = useRef<string>(DEFAULT_ROOM);
   const endRef = useRef<HTMLDivElement | null>(null);
   const typingDebounceRef = useRef<number | null>(null);
   const typingIndicatorRef = useRef<number | null>(null);
 
-  const canChat = useMemo(
-    () => Boolean(nickname && wsRef.current?.readyState === WebSocket.OPEN),
-    [nickname, status],
-  );
-
-  useEffect(() => {
-    nicknameRef.current = nickname;
-  }, [nickname]);
+  const canChat = useMemo(() => wsRef.current?.readyState === WebSocket.OPEN, [status]);
 
   useEffect(() => {
     activeRoomRef.current = activeRoom;
   }, [activeRoom]);
 
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
+    if (!token) {
+      wsRef.current?.close();
+      wsRef.current = null;
+      setStatus("Deconnecte");
+      setUsers([]);
+      setTypingNick("");
+      return;
+    }
+
+    setStatus("Connexion...");
+
+    const ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setStatus("Connecte");
+      setAuthError("");
     };
 
     ws.onmessage = (event) => {
@@ -102,7 +111,7 @@ export default function App() {
             return;
           }
           case "typing": {
-            if (parsed.nick === nicknameRef.current) {
+            if (parsed.nick === username) {
               return;
             }
 
@@ -123,8 +132,13 @@ export default function App() {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setStatus("Deconnecte");
+      if (event.code === 4001) {
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+        setToken("");
+        setAuthError("Session invalide ou expiree. Reconnectez-vous.");
+      }
       setMessages((prev) => [...prev, { type: "system", text: "Connexion fermee." }]);
     };
 
@@ -142,7 +156,7 @@ export default function App() {
         window.clearTimeout(typingIndicatorRef.current);
       }
     };
-  }, []);
+  }, [token, username]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -164,17 +178,6 @@ export default function App() {
 
     setUsers([]);
     sendMessage({ type: "join-room", room: normalized });
-  };
-
-  const submitNickname = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const cleanNickname = nicknameDraft.trim();
-    if (!cleanNickname || nickname) {
-      return;
-    }
-
-    setNickname(cleanNickname);
-    sendMessage({ type: "set-nick", nick: cleanNickname });
   };
 
   const submitMessage = (event: FormEvent<HTMLFormElement>) => {
@@ -214,27 +217,50 @@ export default function App() {
     }, 300);
   };
 
-  const toggleChatParticipation = () => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
+  const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const rawUsername = username.trim();
+    const loginKey = rawUsername.toLowerCase();
+    if (!loginKey || !password.trim()) {
+      setAuthError("Saisissez un username et un password.");
       return;
     }
 
-    if (nickname) {
-      sendMessage({ type: "leave" });
-      setNickname("");
-      setInput("");
-      return;
-    }
+    try {
+      const response = await fetch(`${API_URL}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: loginKey, password }),
+      });
 
-    const cleanNickname = nicknameDraft.trim();
-    if (!cleanNickname) {
-      setMessages((prev) => [...prev, { type: "system", text: "Saisissez un pseudo pour entrer." }]);
-      return;
-    }
+      const payload = (await response.json()) as { token?: string; username?: string; error?: string };
+      if (!response.ok || !payload.token) {
+        setAuthError(payload.error ?? "Echec de connexion.");
+        return;
+      }
 
-    setNickname(cleanNickname);
-    sendMessage({ type: "set-nick", nick: cleanNickname });
+      const resolvedUsername = payload.username ?? rawUsername;
+      setUsername(resolvedUsername);
+      setToken(payload.token);
+      localStorage.setItem(USER_STORAGE_KEY, resolvedUsername);
+      localStorage.setItem(TOKEN_STORAGE_KEY, payload.token);
+      setPassword("");
+      setAuthError("");
+      setMessages((prev) => [...prev, { type: "system", text: `Authentifie en tant que ${resolvedUsername}.` }]);
+    } catch {
+      setAuthError("Le serveur est indisponible.");
+    }
+  };
+
+  const logout = () => {
+    wsRef.current?.close();
+    wsRef.current = null;
+    setToken("");
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    setAuthError("");
+    setStatus("Deconnecte");
+    setUsers([]);
   };
 
   return (
@@ -248,13 +274,8 @@ export default function App() {
           </div>
           <div className="header-actions">
             <span className={`status ${status === "Connecte" ? "ok" : "warn"}`}>{status}</span>
-            <button
-              type="button"
-              className="disconnect-btn"
-              onClick={toggleChatParticipation}
-              disabled={!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN}
-            >
-              {nickname ? "Quitter la conversation" : "Entrer dans la conversation"}
+            <button type="button" className="disconnect-btn" onClick={logout} disabled={!token}>
+              Se deconnecter
             </button>
           </div>
         </header>
@@ -267,8 +288,11 @@ export default function App() {
                 value={roomDraft}
                 onChange={(event) => setRoomDraft(event.target.value)}
                 placeholder="#nouvelle-room"
+                disabled={!token}
               />
-              <button type="submit">Creer / rejoindre</button>
+              <button type="submit" disabled={!token}>
+                Creer / rejoindre
+              </button>
             </form>
 
             <div className="room-list">
@@ -278,6 +302,7 @@ export default function App() {
                   type="button"
                   className={`room-item ${room === activeRoom ? "active" : ""}`}
                   onClick={() => joinRoom(room)}
+                  disabled={!token}
                 >
                   {room}
                 </button>
@@ -286,19 +311,26 @@ export default function App() {
           </aside>
 
           <section className="chat-panel">
-            <form className="nickname-form" onSubmit={submitNickname}>
-              <label htmlFor="nickname">Pseudo</label>
+            <form className="auth-form" onSubmit={submitLogin}>
               <input
-                id="nickname"
-                value={nicknameDraft}
-                onChange={(event) => setNicknameDraft(event.target.value)}
-                placeholder="Ex: Raphael"
-                disabled={Boolean(nickname)}
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="Username (raphael ou beatrice)"
+                disabled={Boolean(token)}
               />
-              <button type="submit" disabled={Boolean(nickname)}>
-                {nickname ? "Pseudo verrouille" : "Valider"}
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Password"
+                disabled={Boolean(token)}
+              />
+              <button type="submit" disabled={Boolean(token)}>
+                {token ? "Authentifie" : "Se connecter"}
               </button>
             </form>
+
+            {authError ? <p className="auth-error">{authError}</p> : null}
 
             <section className="online-users" aria-label="Utilisateurs en ligne">
               <p>En ligne dans {activeRoom}</p>
@@ -345,7 +377,7 @@ export default function App() {
               <input
                 value={input}
                 onChange={(event) => onInputChange(event.target.value)}
-                placeholder={nickname ? `Message dans ${activeRoom}` : "Definissez d'abord votre pseudo"}
+                placeholder={token ? `Message dans ${activeRoom}` : "Connectez-vous d'abord"}
                 disabled={!canChat}
               />
               <button type="submit" disabled={!canChat}>
